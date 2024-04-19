@@ -1,0 +1,53 @@
+package fr.norsys.docsapi.controller;
+
+
+import fr.norsys.docsapi.dto.auth.JwtResponse;
+import fr.norsys.docsapi.dto.auth.LoginRequest;
+import fr.norsys.docsapi.dto.MessageResponse;
+import fr.norsys.docsapi.dto.auth.SignupRequest;
+import fr.norsys.docsapi.entity.User;
+import fr.norsys.docsapi.repository.UserRepository;
+import fr.norsys.docsapi.security.service.UserDetailsImpl;
+import fr.norsys.docsapi.service.AuthService;
+import fr.norsys.docsapi.utils.JwtUtils;
+import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+
+@CrossOrigin(origins = "*", maxAge = 3600)
+@RestController
+@RequestMapping("/api/auth")
+public class AuthController {
+
+
+    @Autowired
+    private AuthService authService;
+
+    @PostMapping("/login")
+    public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
+        return ResponseEntity.ok(authService.login(loginRequest));
+    }
+
+    @PostMapping("/signup")
+    public ResponseEntity<?> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
+        MessageResponse response = authService.signup(signUpRequest);
+        if (response.getStatusCode() >= 400 && response.getStatusCode() < 500) {
+            return ResponseEntity.badRequest().body(response);
+        } else if (response.getStatusCode() >= 500) {
+            return ResponseEntity.status(response.getStatusCode()).body(response);
+        } else {
+            return ResponseEntity.status(response.getStatusCode()).body(response);
+        }
+    }
+}

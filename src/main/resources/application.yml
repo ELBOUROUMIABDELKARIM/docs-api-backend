@@ -1,0 +1,27 @@
+spring:
+  flyway:
+    locations: classpath:db/migration
+  application:
+    name: docs-api
+  servlet:
+    multipart:
+      enabled: true
+      file-size-threshold: 2KB
+      max-file-size: 200MB
+      max-request-size: 215MB
+  datasource:
+    url: jdbc:postgresql://postgres:5432/apidoc
+    username: root
+    password: password
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: validate
+
+file:
+  upload-dir: "/Users/Pc/storage"
+
+docsapi:
+  app:
+    jwtSecret: 2D4A614E645267556B58703273357638792F423F4428472B4C6250655368566A
+    jwtExpirationMs: 86400000
