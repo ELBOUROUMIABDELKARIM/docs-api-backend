@@ -1,7 +1,6 @@
 package fr.norsys.docsapi.dto.auth;
 
 import lombok.AllArgsConstructor;
-import lombok.Data;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 

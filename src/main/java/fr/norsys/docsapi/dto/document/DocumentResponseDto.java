@@ -1,7 +1,6 @@
 package fr.norsys.docsapi.dto.document;
 
 import fr.norsys.docsapi.entity.MetaData;
-import fr.norsys.docsapi.entity.Permission;
 import fr.norsys.docsapi.entity.PermissionEntry;
 import lombok.Builder;
 import lombok.Data;

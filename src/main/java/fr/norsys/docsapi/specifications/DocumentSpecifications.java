@@ -3,14 +3,15 @@ package fr.norsys.docsapi.specifications;
 import fr.norsys.docsapi.entity.Document;
 import fr.norsys.docsapi.entity.MetaData;
 import jakarta.persistence.criteria.Join;
-import jakarta.persistence.criteria.JoinType;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.jpa.domain.Specification;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
-import java.util.List;
 
+/**
+ * Aymane
+ */
 public class DocumentSpecifications {
     public static Specification<Document> search(String searchValue) {
         return (root, query, cb) -> {
@@ -34,7 +35,6 @@ public class DocumentSpecifications {
                     return cb.or(docName, type, creationDatePredicate);
                 }
             } catch (DateTimeParseException e) {
-                System.out.println("Not a valid date format: " + searchValue);
                 if (predicateKey != null && predicateValue != null) {
                     return cb.or(docName, type, cb.and(predicateKey, predicateValue));
                 } else {

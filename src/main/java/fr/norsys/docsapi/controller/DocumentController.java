@@ -4,9 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.norsys.docsapi.dto.document.DocumentResponseDto;
 import fr.norsys.docsapi.dto.document.DocumentUploadResponse;
+import fr.norsys.docsapi.dto.document.ShareDto;
 import fr.norsys.docsapi.entity.MetaData;
 import fr.norsys.docsapi.service.IDocumentService;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -28,14 +28,15 @@ public class DocumentController {
 
     private final IDocumentService documentService;
 
-    @Autowired
     public DocumentController(IDocumentService documentService) {
         this.documentService = documentService;
     }
 
+    /**
+     * Karim
+     */
     @PostMapping(value = "/upload")
-    public ResponseEntity<?> upload(@RequestPart("document") MultipartFile document,
-                                                         @RequestParam("metadata") String metadata) {
+    public ResponseEntity<?> upload(@RequestPart("document") MultipartFile document, @RequestParam("metadata") String metadata) {
         try {
             List<MetaData> metadataMapped = new ObjectMapper().readValue(metadata, new TypeReference<>() {});
             String fileId = documentService.uploadDocument(document, metadataMapped);
@@ -49,6 +50,9 @@ public class DocumentController {
         }
     }
 
+    /**
+     * Karim
+     */
     @GetMapping(value = "")
     public ResponseEntity<?> getDocuments() {
         try {
@@ -59,11 +63,17 @@ public class DocumentController {
         }
     }
 
+
+    @GetMapping(value = "{docId}")
+    public ResponseEntity<?> getDocument(@PathVariable String docId) {
+        return ResponseEntity.ok(documentService.get(UUID.fromString(docId)));
+    }
+
+    /**
+     * Aymane
+     */
     @GetMapping(value = "/page")
-    public ResponseEntity<?> getDocumentsPagination(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size
-    ) {
+    public ResponseEntity<?> getDocumentsPagination(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         try {
             return new ResponseEntity<>(documentService.getListPagination(page, size), HttpStatus.OK);
         } catch (Exception e) {
@@ -71,6 +81,9 @@ public class DocumentController {
         }
     }
 
+    /**
+     * Karim
+     */
     @GetMapping("/download/{docId}")
     public ResponseEntity<Resource> download(@PathVariable String docId)
             throws IOException, NoSuchAlgorithmException {
@@ -86,17 +99,44 @@ public class DocumentController {
                 .body(resource);
     }
 
+    /**
+     * Aymane
+     */
     @GetMapping(value = "/search")
-    public ResponseEntity<?> searchDocuments(
-            @RequestParam(defaultValue = "") String searchValue
-    ) {
+    public ResponseEntity<?> searchDocuments(@RequestParam(defaultValue = "") String searchValue) {
         try {
             List<DocumentResponseDto> documents = documentService.search(searchValue);
             return ResponseEntity.ok(documents);
         } catch (ResponseStatusException e) {
             throw e;
         } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error retrieving documents");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Searching documents");
+        }
+    }
+
+    /**
+     * Aymane
+     */
+    @DeleteMapping(value = "/{docId}")
+    public ResponseEntity<?> delete(@PathVariable String docId) {
+        try {
+            documentService.delete(docId);
+            return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        }catch (Exception e){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Deleting document");
+        }
+    }
+
+    /**
+     * Karim
+     */
+    @PostMapping
+    public ResponseEntity<?> share(@RequestBody ShareDto shareDto){
+        try {
+            documentService.share(shareDto);
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body("File Successfully Shared");
+        }catch (Exception e){
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Sharing Document");
         }
     }
 }

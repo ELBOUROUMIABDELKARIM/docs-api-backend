@@ -12,6 +12,9 @@ import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 
+/**
+ * Karim
+ */
 @RestControllerAdvice
 public class CustomExceptionHandler {
 

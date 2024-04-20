@@ -1,6 +1,7 @@
 package fr.norsys.docsapi.service;
 
 import fr.norsys.docsapi.dto.document.DocumentResponseDto;
+import fr.norsys.docsapi.dto.document.ShareDto;
 import fr.norsys.docsapi.entity.*;
 import fr.norsys.docsapi.repository.DocumentRepository;
 import fr.norsys.docsapi.repository.MetaDataRepository;
@@ -25,10 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
+import java.nio.file.*;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
 import java.time.Instant;
@@ -101,24 +99,35 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-
     @Override
     public Resource downloadDocument(String docId) throws IOException {
-        Document document = documentRepository.findById(UUID.fromString(docId))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+        Document document = get(UUID.fromString(docId));
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        var user = userRepository.findByUserName(userDetails.getUsername()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-        Path dirPath = Paths.get(documentStorageProperties.getUploadDir());
-        Path foundFile = Files.list(dirPath)
-                .filter(file -> file.getFileName().toString().startsWith(document.getName()))
-                .findFirst()
-                .orElseThrow(() -> new IOException("Document not found"));
-
-        return new UrlResource(foundFile.toUri());
+        if (!document.getUser().equals(user)) {
+            PermissionEntry permissionEntry = permissionEntryRepository.findByDocumentAndUser(document, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Permission entry not found for this user and document"));
+            if (!permissionEntry.getPermission().equals(Permission.ALL) && !permissionEntry.getPermission().equals(Permission.READ)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to download this document");
+            }
+        }
+        try {
+            Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
+            if (!Files.exists(foundFile)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+            }
+            return new UrlResource(foundFile.toUri());
+        } catch (InvalidPathException e) {
+            throw new IOException("Document not found");
+        }
     }
 
     @Override
-    public Document get(String id) {
-        return null;
+    public Document get(UUID id) {
+        return documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+
     }
 
     @Override
@@ -142,8 +151,7 @@ public class DocumentLocalService implements IDocumentService {
             var userDetails = (UserDetailsImpl) authentication.getPrincipal();
             var user = userRepository.findByUserName(userDetails.getUsername()).orElseThrow();
             Pageable paging = PageRequest.of(page, size);
-            Page<Document> pageDocs;
-            pageDocs = documentRepository.findByUser(user, paging);
+            Page<Document> pageDocs =  documentRepository.findByUser(user, paging);
             List<DocumentResponseDto> documents = pageDocs.getContent().stream()
                     .map(this::convertToDto)
                     .toList();
@@ -160,15 +168,49 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-
     @Override
-    public void delete(String id) {
+    public void share(ShareDto shareDto) {
+        Document document = get(UUID.fromString(shareDto.getDocumentId()));
+        User user = userRepository.findById(UUID.fromString(shareDto.getUserId())).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+        List<Permission> permissions = Arrays.stream(shareDto.getPermissions().split(","))
+                .map(Permission::valueOf)
+                .toList();
 
+        for (Permission permission : permissions) {
+            PermissionEntry permissionEntry = new PermissionEntry();
+            permissionEntry.setDocument(document);
+            permissionEntry.setUser(user);
+            permissionEntry.setPermission(permission);
+            permissionEntryRepository.save(permissionEntry);
+        }
     }
 
+    /**
+     * Karim
+     */
     @Override
-    public void deleteAll() {
+    public void delete(String id) throws IOException {
+        Document document = get(UUID.fromString(id));
+        var authentication = SecurityContextHolder.getContext().getAuthentication();
+        var userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        var user = userRepository.findByUserName(userDetails.getUsername()).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
+        if (!document.getUser().equals(user)) {
+            PermissionEntry permissionEntry = permissionEntryRepository.findByDocumentAndUser(document, user).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Permission entry not found for this user and document"));
+            if (!permissionEntry.getPermission().equals(Permission.ALL) && !permissionEntry.getPermission().equals(Permission.DELETE)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to delete this document");
+            }
+        }
+        try {
+            Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
+            if (!Files.exists(foundFile)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+            }
+            Files.delete(foundFile);
+            documentRepository.delete(document);
+        } catch (IOException e) {
+            throw new IOException("Failed to delete document");
+        }
     }
 
     @Override
@@ -184,13 +226,13 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    private void createDirectories(Path path) throws IOException {
+    public void createDirectories(Path path) throws IOException {
         if (!Files.exists(path)) {
             Files.createDirectories(path);
         }
     }
 
-    private void validateDocument(String checksum, String filename) {
+    public void validateDocument(String checksum, String filename) {
         if (documentRepository.findByChecksum(checksum).isPresent() || documentRepository.findByName(filename).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already exists");
         }
@@ -209,5 +251,7 @@ public class DocumentLocalService implements IDocumentService {
                 .metaData(document.getMetadata())
                 .build();
     }
+
+
 
 }
