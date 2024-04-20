@@ -10,4 +10,5 @@ import java.util.UUID;
 
 public interface PermissionEntryRepository extends JpaRepository<PermissionEntry, UUID> {
     Optional<PermissionEntry> findByDocumentAndUser(Document document, User user);
+    boolean existsByDocumentAndUserAndPermission(Document document, User user, PermissionEntry permission);
 }

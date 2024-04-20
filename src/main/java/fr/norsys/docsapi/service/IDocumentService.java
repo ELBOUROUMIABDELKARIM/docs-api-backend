@@ -22,4 +22,5 @@ public interface IDocumentService {
     List<DocumentResponseDto> search(String searchValue);
     Map<String, Object> getListPagination(int page, int size);
     void share(ShareDto shareDto);
+    List<DocumentResponseDto> sharedWithMe();
 }

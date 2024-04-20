@@ -51,6 +51,9 @@ public class DocumentLocalService implements IDocumentService {
         this.permissionEntryRepository = permissionEntryRepository;
     }
 
+    /**
+     * Karim
+     * */
     @Override
     public String uploadDocument(MultipartFile file, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException {
         Path uploadPath = Paths.get(documentStorageProperties.getUploadDir());
@@ -99,6 +102,9 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
+    /**
+     * Karim
+     * */
     @Override
     public Resource downloadDocument(String docId) throws IOException {
         Document document = get(UUID.fromString(docId));
@@ -123,13 +129,9 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    @Override
-    public Document get(UUID id) {
-        return documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
-
-    }
-
+    /**
+     * Karim
+     * */
     @Override
     public List<DocumentResponseDto> getList() {
         try {
@@ -144,6 +146,10 @@ public class DocumentLocalService implements IDocumentService {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
         }
     }
+
+    /**
+     * Aymane
+     * */
     @Override
     public Map<String, Object> getListPagination(int page, int size) {
         try {
@@ -168,26 +174,83 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
+    /**
+     * Karim
+     * */
     @Override
     public void share(ShareDto shareDto) {
         Document document = get(UUID.fromString(shareDto.getDocumentId()));
-        User user = userRepository.findById(UUID.fromString(shareDto.getUserId())).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
         List<Permission> permissions = Arrays.stream(shareDto.getPermissions().split(","))
                 .map(Permission::valueOf)
                 .toList();
 
-        for (Permission permission : permissions) {
-            PermissionEntry permissionEntry = new PermissionEntry();
-            permissionEntry.setDocument(document);
-            permissionEntry.setUser(user);
-            permissionEntry.setPermission(permission);
-            permissionEntryRepository.save(permissionEntry);
-        }
+        List<Permission> clearPermissions = clearPermissions(permissions);
+
+        shareDto.getUsersIds().forEach(userId -> {
+            User user = userRepository.findById(UUID.fromString(userId))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+
+                clearPermissions.forEach(permission -> {
+                if(!isDocumentSharedWithUser(document, user, permission)){
+                    PermissionEntry permissionEntry = new PermissionEntry();
+                    permissionEntry.setDocument(document);
+                    permissionEntry.setUser(user);
+                    permissionEntry.setPermission(permission);
+                    permissionEntryRepository.save(permissionEntry);
+                }
+            });
+        });
     }
 
     /**
      * Karim
-     */
+     * */
+    @Override
+    public List<DocumentResponseDto> sharedWithMe() {
+        try {
+            var authentication = SecurityContextHolder.getContext().getAuthentication();
+            var userDetails = (UserDetailsImpl) authentication.getPrincipal();
+            var user = userRepository.findByUserName(userDetails.getUsername()).orElseThrow();
+            List<Document> documents = documentRepository.findSharedDocumentsForUser(user)
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No Shared Documents found"));
+            return documents.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+        }catch (Exception e){
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
+        }
+
+    }
+
+    /**
+     * Karim
+     * */
+    @Override
+    public List<DocumentResponseDto> search(String searchValue) {
+        try {
+            Specification<Document> specification = DocumentSpecifications.search(searchValue);
+            List<Document> documents = documentRepository.findAll(specification);
+            return documents.stream()
+                    .map(this::convertToDto)
+                    .collect(Collectors.toList());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
+        }
+    }
+
+    /**
+     * Aymane
+     * */
+    @Override
+    public Document get(UUID id) {
+        return documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+
+    }
+
+    /**
+     * Aymane
+     * */
     @Override
     public void delete(String id) throws IOException {
         Document document = get(UUID.fromString(id));
@@ -213,31 +276,27 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    @Override
-    public List<DocumentResponseDto> search(String searchValue) {
-        try {
-            Specification<Document> specification = DocumentSpecifications.search(searchValue);
-            List<Document> documents = documentRepository.findAll(specification);
-            return documents.stream()
-                    .map(this::convertToDto)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
-        }
-    }
-
+    /**
+     * Karim
+     * */
     public void createDirectories(Path path) throws IOException {
         if (!Files.exists(path)) {
             Files.createDirectories(path);
         }
     }
 
+    /**
+     * Karim
+     * */
     public void validateDocument(String checksum, String filename) {
         if (documentRepository.findByChecksum(checksum).isPresent() || documentRepository.findByName(filename).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already exists");
         }
     }
 
+    /**
+     * Karim
+     * */
     public DocumentResponseDto convertToDto(Document document) {
         return DocumentResponseDto.builder()
                 .id(document.getId())
@@ -252,6 +311,31 @@ public class DocumentLocalService implements IDocumentService {
                 .build();
     }
 
+    /**
+     * Karim
+     * */
+    private List<Permission> clearPermissions(List<Permission> permissions) {
+        if (permissions.contains(Permission.ALL)) {
+            return Collections.singletonList(Permission.ALL);
+        } else if (new HashSet<>(permissions).containsAll(Arrays.asList(Permission.READ, Permission.WRITE, Permission.DELETE))) {
+            return Collections.singletonList(Permission.ALL);
+        } else if (permissions.contains(Permission.READ) && permissions.contains(Permission.WRITE)) {
+            return Arrays.asList(Permission.READ, Permission.WRITE);
+        } else if (permissions.contains(Permission.READ) && permissions.contains(Permission.DELETE)) {
+            return Arrays.asList(Permission.READ, Permission.DELETE);
+        } else if (permissions.contains(Permission.WRITE) && permissions.contains(Permission.DELETE)) {
+            return Arrays.asList(Permission.WRITE, Permission.DELETE);
+        } else {
+            return permissions;
+        }
+    }
 
 
+    /**
+     * Karim
+     * */
+    private boolean isDocumentSharedWithUser(Document document, User user, Permission permission) {
+        return document.getPermissions().stream()
+                .anyMatch(entry -> entry.getUser().equals(user) && entry.getPermission() == permission);
+    }
 }

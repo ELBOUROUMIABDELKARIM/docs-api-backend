@@ -63,7 +63,9 @@ public class DocumentController {
         }
     }
 
-
+    /**
+     * Aymane
+     */
     @GetMapping(value = "{docId}")
     public ResponseEntity<?> getDocument(@PathVariable String docId) {
         return ResponseEntity.ok(documentService.get(UUID.fromString(docId)));
@@ -130,13 +132,25 @@ public class DocumentController {
     /**
      * Karim
      */
-    @PostMapping
+    @PostMapping("/share")
     public ResponseEntity<?> share(@RequestBody ShareDto shareDto){
         try {
             documentService.share(shareDto);
             return ResponseEntity.status(HttpStatus.ACCEPTED).body("File Successfully Shared");
         }catch (Exception e){
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Sharing Document");
+        }
+    }
+
+    /**
+     * Karim
+     */
+    @GetMapping("/sharedwithme")
+    public ResponseEntity<?> shareWithMe() {
+        try {
+            return ResponseEntity.ok(documentService.sharedWithMe());
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error retrieving Shared documents");
         }
     }
 }
