@@ -5,6 +5,7 @@ import fr.norsys.docsapi.dto.MessageResponse;
 import fr.norsys.docsapi.dto.auth.SignupRequest;
 import fr.norsys.docsapi.service.AuthService;
 import jakarta.validation.Valid;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -21,7 +22,6 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 public class AuthController {
 
-
     private final AuthService authService;
 
     public AuthController(AuthService authService) {
@@ -34,14 +34,8 @@ public class AuthController {
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<?> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
+    public ResponseEntity<MessageResponse> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
         MessageResponse response = authService.signup(signUpRequest);
-        if (response.getStatusCode() >= 400 && response.getStatusCode() < 500) {
-            return ResponseEntity.badRequest().body(response);
-        } else if (response.getStatusCode() >= 500) {
-            return ResponseEntity.status(response.getStatusCode()).body(response);
-        } else {
-            return ResponseEntity.status(response.getStatusCode()).body(response);
-        }
+        return ResponseEntity.status(HttpStatus.valueOf(response.getStatusCode())).body(response);
     }
 }

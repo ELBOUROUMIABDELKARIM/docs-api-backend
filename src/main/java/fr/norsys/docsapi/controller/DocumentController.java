@@ -16,7 +16,6 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
-
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
@@ -39,7 +38,7 @@ public class DocumentController {
     public ResponseEntity<?> upload(@RequestPart("document") MultipartFile document, @RequestParam("metadata") String metadata) {
         try {
             List<MetaData> metadataMapped = new ObjectMapper().readValue(metadata, new TypeReference<>() {});
-            String fileId = documentService.uploadDocument(document, metadataMapped);
+            String fileId = documentService.upload(document, metadataMapped);
             DocumentUploadResponse response = DocumentUploadResponse.builder()
                     .docName(StringUtils.cleanPath(Objects.requireNonNull(document.getOriginalFilename())))
                     .downloadUri("/api/documents/download/" + fileId)
@@ -89,7 +88,7 @@ public class DocumentController {
     @GetMapping("/download/{docId}")
     public ResponseEntity<Resource> download(@PathVariable String docId)
             throws IOException, NoSuchAlgorithmException {
-        Resource resource = documentService.downloadDocument(docId);
+        Resource resource = documentService.download(docId);
         if (resource == null) {
             return ResponseEntity.notFound().build();
         }
@@ -117,6 +116,21 @@ public class DocumentController {
     }
 
     /**
+     * Karim
+     */
+    @GetMapping(value = "/searchwithme")
+    public ResponseEntity<?> searchWithMeDocument(@RequestParam(defaultValue = "") String searchValue){
+        try {
+            List<DocumentResponseDto> documents = documentService.searchSharedWithMe(searchValue);
+            return ResponseEntity.ok(documents);
+        } catch (ResponseStatusException e) {
+            throw e;
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Searching documents");
+        }
+    }
+
+    /**
      * Aymane
      */
     @DeleteMapping(value = "/{docId}")
@@ -124,8 +138,8 @@ public class DocumentController {
         try {
             documentService.delete(docId);
             return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
-        }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Deleting document");
+        } catch (ResponseStatusException e) {
+            return ResponseEntity.status(e.getStatusCode()).body(e.getReason());
         }
     }
 
