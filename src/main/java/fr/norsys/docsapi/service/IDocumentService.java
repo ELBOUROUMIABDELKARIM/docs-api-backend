@@ -14,11 +14,14 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface IDocumentService {
-    String uploadDocument(MultipartFile document, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException;
-    Resource downloadDocument(String docId) throws IOException, NoSuchAlgorithmException;
+    String upload(MultipartFile document, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException;
+    Resource download(String docId) throws IOException, NoSuchAlgorithmException;
+
+    List<DocumentResponseDto> searchSharedWithMe(String searchValue);
+
     Document get(UUID id);
     List<DocumentResponseDto> getList();
-    void delete(String id) throws IOException;
+    void delete(String id);
     List<DocumentResponseDto> search(String searchValue);
     Map<String, Object> getListPagination(int page, int size);
     void share(ShareDto shareDto);
