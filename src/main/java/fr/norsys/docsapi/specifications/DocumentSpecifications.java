@@ -9,9 +9,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 
-/**
- * Aymane
- */
+
 public class DocumentSpecifications {
     public static Specification<Document> search(String searchValue) {
         return (root, query, cb) -> {

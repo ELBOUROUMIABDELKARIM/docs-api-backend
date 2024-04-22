@@ -5,9 +5,6 @@ import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 
-/**
- * Karim
- */
 @Setter
 @Getter
 @ConfigurationProperties(prefix = "file")

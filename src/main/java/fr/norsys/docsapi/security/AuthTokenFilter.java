@@ -1,6 +1,5 @@
 package fr.norsys.docsapi.security;
 
-
 import fr.norsys.docsapi.security.service.UserDetailsServiceImpl;
 import fr.norsys.docsapi.utils.JwtUtils;
 import jakarta.servlet.FilterChain;
@@ -18,9 +17,7 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.filter.OncePerRequestFilter;
 import java.io.IOException;
 
-/**
- * Karim
- */
+
 public class AuthTokenFilter extends OncePerRequestFilter {
     @Autowired
     private JwtUtils jwtUtils;

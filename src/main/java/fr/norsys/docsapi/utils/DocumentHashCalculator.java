@@ -7,9 +7,7 @@ import java.nio.file.Path;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
-/**
- * Karim
- */
+
 public class DocumentHashCalculator {
     public static String calculateHash(Path file) throws NoSuchAlgorithmException, IOException {
         byte[] buffer = new byte[8192]; // 8KB buffer size

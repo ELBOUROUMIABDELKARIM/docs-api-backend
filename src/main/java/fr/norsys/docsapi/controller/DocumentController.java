@@ -31,9 +31,6 @@ public class DocumentController {
         this.documentService = documentService;
     }
 
-    /**
-     * Karim
-     */
     @PostMapping(value = "/upload")
     public ResponseEntity<?> upload(@RequestPart("document") MultipartFile document, @RequestParam("metadata") String metadata) {
         try {
@@ -45,13 +42,10 @@ public class DocumentController {
                     .build();
             return ResponseEntity.ok(response);
         } catch (IOException | NoSuchAlgorithmException e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getCause());
         }
     }
 
-    /**
-     * Karim
-     */
     @GetMapping(value = "")
     public ResponseEntity<?> getDocuments() {
         try {
@@ -62,17 +56,12 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Aymane
-     */
     @GetMapping(value = "{docId}")
     public ResponseEntity<?> getDocument(@PathVariable String docId) {
         return ResponseEntity.ok(documentService.get(UUID.fromString(docId)));
     }
 
-    /**
-     * Aymane
-     */
+
     @GetMapping(value = "/page")
     public ResponseEntity<?> getDocumentsPagination(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         try {
@@ -82,9 +71,6 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Karim
-     */
     @GetMapping("/download/{docId}")
     public ResponseEntity<Resource> download(@PathVariable String docId)
             throws IOException, NoSuchAlgorithmException {
@@ -100,9 +86,7 @@ public class DocumentController {
                 .body(resource);
     }
 
-    /**
-     * Aymane
-     */
+
     @GetMapping(value = "/search")
     public ResponseEntity<?> searchDocuments(@RequestParam(defaultValue = "") String searchValue) {
         try {
@@ -115,9 +99,7 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Karim
-     */
+
     @GetMapping(value = "/searchwithme")
     public ResponseEntity<?> searchWithMeDocument(@RequestParam(defaultValue = "") String searchValue){
         try {
@@ -130,9 +112,7 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Aymane
-     */
+
     @DeleteMapping(value = "/{docId}")
     public ResponseEntity<?> delete(@PathVariable String docId) {
         try {
@@ -143,16 +123,14 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Karim
-     */
+
     @PostMapping("/share")
     public ResponseEntity<?> share(@RequestBody ShareDto shareDto){
         try {
             documentService.share(shareDto);
             return ResponseEntity.status(HttpStatus.ACCEPTED).body("File Successfully Shared");
         }catch (Exception e){
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Sharing Document");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getMessage());
         }
     }
 

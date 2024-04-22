@@ -53,9 +53,7 @@ public class DocumentLocalService implements IDocumentService {
         this.permissionEntryRepository = permissionEntryRepository;
     }
 
-    /**
-     * Karim
-     * */
+
     @Override
     public String upload(MultipartFile file, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException {
         User user = getAuthenticatedUser();
@@ -71,7 +69,7 @@ public class DocumentLocalService implements IDocumentService {
             validateDocument(checksum, originalFilename);
             String type = Files.probeContentType(filePath);
             if (type == null) {
-                type = originalFilename.split("\\.")[1].toUpperCase();
+                type = "unknown";
             }
             Document document = createDocument(originalFilename, file.getSize(), type,checksum, filePath.toString(), user);
             documentRepository.save(document);
@@ -95,20 +93,13 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Karim
-     * */
     @Override
     public Resource download(String docId) throws IOException {
         Document document = get(UUID.fromString(docId));
         User user = getAuthenticatedUser();
 
         if (!document.getUser().equals(user)) {
-            List<PermissionEntry> permissionEntries = permissionEntryRepository.findByDocumentAndUser(document, user)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Permission entry not found for this user and document"));
-
-            boolean hasReadPermission = permissionEntries.stream()
-                    .anyMatch(permissionEntry -> permissionEntry.getPermission().equals(Permission.ALL) || permissionEntry.getPermission().equals(Permission.READ));
+            boolean hasReadPermission = hasPermission(document, user, Permission.READ);
             if (!hasReadPermission) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to download this document");
             }
@@ -125,10 +116,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-
-    /**
-     * Karim
-     * */
     @Override
     public List<DocumentResponseDto> getList() {
         try {
@@ -142,9 +129,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Aymane
-     * */
     @Override
     public Map<String, Object> getListPagination(int page, int size) {
         try {
@@ -168,9 +152,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Karim
-     * */
     @Override
     public void share(ShareDto shareDto) {
         Document document = get(UUID.fromString(shareDto.getDocumentId()));
@@ -186,10 +167,8 @@ public class DocumentLocalService implements IDocumentService {
             User user = userRepository.findById(UUID.fromString(userId))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-            // Delete existing permissions for this document and user
             permissionEntryRepository.deleteByDocumentAndUser(document, user);
 
-            // Save new permissions
             effectivePermissions.forEach(permission -> {
                 PermissionEntry permissionEntry = new PermissionEntry();
                 permissionEntry.setDocument(document);
@@ -200,10 +179,6 @@ public class DocumentLocalService implements IDocumentService {
         });
     }
 
-
-    /**
-     * Karim
-     * */
     @Override
     public List<DocumentResponseDto> sharedWithMe() {
         try {
@@ -221,9 +196,6 @@ public class DocumentLocalService implements IDocumentService {
 
     }
 
-    /**
-     * Aymane
-     * */
     @Override
     public List<DocumentResponseDto> search(String searchValue) {
         try {
@@ -240,9 +212,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Karim
-     * */
     @Override
     public List<DocumentResponseDto> searchSharedWithMe(String searchValue) {
         try {
@@ -270,12 +239,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-
-
-
-    /**
-     * Aymane
-     * */
     @Override
     public Document get(UUID id) {
         User authenticatedUser = getAuthenticatedUser();
@@ -290,24 +253,17 @@ public class DocumentLocalService implements IDocumentService {
         return document;
     }
 
-
-    /**
-     * Aymane
-     * */
     @Override
     public void delete(String id) {
         Document document = get(UUID.fromString(id));
-        var user = getAuthenticatedUser();
+        User user = getAuthenticatedUser();
 
         if (!document.getUser().equals(user)) {
-            List<PermissionEntry> permissionEntries = permissionEntryRepository.findByDocumentAndUser(document, user)
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Permission entry not found for this user and document"));
-            boolean hasDeletePermission = permissionEntries.stream().anyMatch(permissionEntry -> permissionEntry.getPermission().equals(Permission.ALL) || permissionEntry.getPermission().equals(Permission.DELETE));
+            boolean hasDeletePermission = hasPermission(document, user, Permission.DELETE);
             if (!hasDeletePermission) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to delete this document");
             }
         }
-
         try {
             Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
             if (!Files.exists(foundFile)) {
@@ -322,13 +278,8 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-
-
     // Helpers
 
-    /**
-     * Karim
-     * */
     private void validatePermissions(List<Permission> permissions) {
         for (Permission permission : permissions) {
             if (!Arrays.asList(Permission.values()).contains(permission)) {
@@ -337,9 +288,6 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Karim
-     * */
     private List<Permission> resolveEffectivePermissions(List<Permission> requestedPermissions) {
         if (requestedPermissions.contains(Permission.ALL) ||
                 new HashSet<>(requestedPermissions).containsAll(Arrays.asList(Permission.READ, Permission.WRITE, Permission.DELETE))) {
@@ -355,18 +303,12 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    /**
-     * Karim
-     * */
     private List<Permission> parsePermissions(String permissionsString) {
         return Arrays.stream(permissionsString.split(","))
                 .map(Permission::valueOf)
                 .collect(Collectors.toList());
     }
 
-    /**
-     * Karim
-     */
     private User getAuthenticatedUser(){
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
@@ -374,9 +316,6 @@ public class DocumentLocalService implements IDocumentService {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
-    /**
-     * Karim
-     */
     private static Document createDocument(String name, long size, String type, String checksum, String storageLocation, User user) {
         Timestamp now = Timestamp.from(Instant.now());
         return Document.builder()
@@ -391,27 +330,18 @@ public class DocumentLocalService implements IDocumentService {
                 .build();
     }
 
-    /**
-     * Karim
-     * */
     private void createDirectories(Path path) throws IOException {
         if (!Files.exists(path)) {
             Files.createDirectories(path);
         }
     }
 
-    /**
-     * Karim
-     * */
     private void validateDocument(String checksum, String filename) {
         if (documentRepository.findByChecksum(checksum).isPresent() || documentRepository.findByName(filename).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already exists");
         }
     }
 
-    /**
-     * Karim
-     * */
     private DocumentResponseDto convertToDto(Document document) {
         return DocumentResponseDto.builder()
                 .id(document.getId())
@@ -426,4 +356,9 @@ public class DocumentLocalService implements IDocumentService {
                 .build();
     }
 
+    private boolean hasPermission(Document document, User user, Permission requiredPermission) {
+        return document.getPermissions().stream()
+                .filter(permissionEntry -> permissionEntry.getUser().equals(user))
+                .anyMatch(permissionEntry -> permissionEntry.getPermission().equals(requiredPermission) || permissionEntry.getPermission().equals(Permission.ALL));
+    }
 }
