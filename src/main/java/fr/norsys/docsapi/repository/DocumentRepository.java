@@ -15,7 +15,7 @@ import java.util.UUID;
 public interface DocumentRepository extends JpaRepository<Document, UUID>, PagingAndSortingRepository<Document, UUID>, JpaSpecificationExecutor<Document> {
     Optional<Document> findByChecksum(String checksum);
     Optional<Document> findByName(String filename);
-    List<Document> findByUser(User user);
+    Optional<List<Document>> findByUser(User user);
     Page<Document> findByUser(User user, Pageable pageable);
     @Query("SELECT d FROM Document d JOIN d.permissions p WHERE p.user = :user AND d.user <> :user")
     Optional<List<Document>> findSharedDocumentsForUser(User user);

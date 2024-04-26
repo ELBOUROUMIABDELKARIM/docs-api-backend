@@ -14,7 +14,7 @@ import java.util.Map;
 import java.util.UUID;
 
 public interface IDocumentService {
-    String upload(MultipartFile document, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException;
+    void upload(MultipartFile document, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException;
     Resource download(String docId) throws IOException, NoSuchAlgorithmException;
     List<DocumentResponseDto> searchSharedWithMe(String searchValue);
     Document get(UUID id);

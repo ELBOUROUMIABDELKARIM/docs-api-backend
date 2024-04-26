@@ -10,6 +10,7 @@ import fr.norsys.docsapi.security.service.UserDetailsImpl;
 import fr.norsys.docsapi.utils.JwtUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -24,20 +25,20 @@ import org.springframework.stereotype.Service;
 @Service
 public class AuthService {
 
-    @Autowired
-    private AuthenticationManager authenticationManager;
+    private final AuthenticationManager authenticationManager;
+    private final UserRepository userRepository;
+    private final JwtUtils jwtUtils;
+    private final PasswordEncoder encoder;
 
-    @Autowired
-    private UserRepository userRepository;
+    public AuthService(AuthenticationManager authenticationManager, UserRepository userRepository,
+                       JwtUtils jwtUtils, PasswordEncoder encoder) {
+        this.authenticationManager = authenticationManager;
+        this.userRepository = userRepository;
+        this.jwtUtils = jwtUtils;
+        this.encoder = encoder;
+    }
 
-    @Autowired
-    private JwtUtils jwtUtils;
-
-    @Autowired
-    private PasswordEncoder encoder;
-
-
-    public JwtResponse login(LoginRequest loginRequest) {
+    public ResponseEntity<JwtResponse> login(LoginRequest loginRequest) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
@@ -45,20 +46,15 @@ public class AuthService {
         String jwt = jwtUtils.generateJwtToken(authentication);
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
-        return new JwtResponse(jwt,
-                userDetails.getId(),
-                userDetails.getUsername(),
-                userDetails.getEmail()
-        );
+        return ResponseEntity.ok(new JwtResponse(jwt, userDetails.getId()));
     }
 
-    public MessageResponse signup(SignupRequest signupRequest) {
-
+    public ResponseEntity<String> signup(SignupRequest signupRequest) {
         if (userRepository.existsByEmail(signupRequest.getEmail())) {
-            return new MessageResponse(HttpStatus.BAD_REQUEST.value(), "Email is already in use!");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email is already in use!");
         }
         if (userRepository.existsByUserName(signupRequest.getUsername())) {
-            return new MessageResponse(HttpStatus.BAD_REQUEST.value(), "Username is already taken!");
+            return ResponseEntity.status(HttpStatus.CONFLICT).body("Username is already taken!");
         }
         User user = User.builder()
                 .userName(signupRequest.getUsername())
@@ -67,8 +63,6 @@ public class AuthService {
                 .build();
 
         userRepository.save(user);
-        return new MessageResponse(HttpStatus.CREATED.value(), "User registered successfully!");
+        return ResponseEntity.status(HttpStatus.CREATED).body("User registered successfully!");
     }
-
-
 }

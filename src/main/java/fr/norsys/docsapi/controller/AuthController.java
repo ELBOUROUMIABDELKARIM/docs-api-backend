@@ -1,11 +1,9 @@
 package fr.norsys.docsapi.controller;
 
 import fr.norsys.docsapi.dto.auth.LoginRequest;
-import fr.norsys.docsapi.dto.MessageResponse;
 import fr.norsys.docsapi.dto.auth.SignupRequest;
 import fr.norsys.docsapi.service.AuthService;
 import jakarta.validation.Valid;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -28,12 +26,11 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest) {
-        return ResponseEntity.ok(authService.login(loginRequest));
+        return authService.login(loginRequest);
     }
 
     @PostMapping("/signup")
-    public ResponseEntity<MessageResponse> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
-        MessageResponse response = authService.signup(signUpRequest);
-        return ResponseEntity.status(HttpStatus.valueOf(response.getStatusCode())).body(response);
+    public ResponseEntity<?> registerUser(@Valid @RequestBody SignupRequest signUpRequest) {
+        return authService.signup(signUpRequest);
     }
 }

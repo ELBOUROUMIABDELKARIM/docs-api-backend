@@ -1,6 +1,8 @@
 package fr.norsys.docsapi.controller;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.norsys.docsapi.dto.document.DocumentResponseDto;
 import fr.norsys.docsapi.dto.document.DocumentUploadResponse;
@@ -35,13 +37,12 @@ public class DocumentController {
     public ResponseEntity<?> upload(@RequestPart("document") MultipartFile document, @RequestParam("metadata") String metadata) {
         try {
             List<MetaData> metadataMapped = new ObjectMapper().readValue(metadata, new TypeReference<>() {});
-            String fileId = documentService.upload(document, metadataMapped);
-            DocumentUploadResponse response = DocumentUploadResponse.builder()
-                    .docName(StringUtils.cleanPath(Objects.requireNonNull(document.getOriginalFilename())))
-                    .downloadUri("/api/documents/download/" + fileId)
-                    .build();
-            return ResponseEntity.ok(response);
-        } catch (IOException | NoSuchAlgorithmException e) {
+            documentService.upload(document, metadataMapped);
+            return ResponseEntity.status(HttpStatus.CREATED).body(document.getOriginalFilename()+" Saved Successfully");
+        }catch (JsonProcessingException e){
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("Invalid metadata");
+        }
+        catch (IOException | NoSuchAlgorithmException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(e.getCause());
         }
     }
@@ -49,8 +50,7 @@ public class DocumentController {
     @GetMapping(value = "")
     public ResponseEntity<?> getDocuments() {
         try {
-            List<DocumentResponseDto> documents = documentService.getList();
-            return ResponseEntity.ok(documents);
+            return ResponseEntity.status(HttpStatus.FOUND).body(documentService.getList());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error retrieving documents");
         }
@@ -58,14 +58,14 @@ public class DocumentController {
 
     @GetMapping(value = "{docId}")
     public ResponseEntity<?> getDocument(@PathVariable String docId) {
-        return ResponseEntity.ok(documentService.get(UUID.fromString(docId)));
+        return ResponseEntity.status(HttpStatus.FOUND).body(documentService.get(UUID.fromString(docId)));
     }
 
 
     @GetMapping(value = "/page")
     public ResponseEntity<?> getDocumentsPagination(@RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "10") int size) {
         try {
-            return new ResponseEntity<>(documentService.getListPagination(page, size), HttpStatus.OK);
+            return ResponseEntity.status(HttpStatus.FOUND).body(documentService.getListPagination(page, size));
         } catch (Exception e) {
             return new ResponseEntity<>(null, HttpStatus.INTERNAL_SERVER_ERROR);
         }
@@ -91,7 +91,7 @@ public class DocumentController {
     public ResponseEntity<?> searchDocuments(@RequestParam(defaultValue = "") String searchValue) {
         try {
             List<DocumentResponseDto> documents = documentService.search(searchValue);
-            return ResponseEntity.ok(documents);
+            return ResponseEntity.status(HttpStatus.FOUND).body(documents);
         } catch (ResponseStatusException e) {
             throw e;
         } catch (Exception e) {
@@ -103,10 +103,7 @@ public class DocumentController {
     @GetMapping(value = "/searchwithme")
     public ResponseEntity<?> searchWithMeDocument(@RequestParam(defaultValue = "") String searchValue){
         try {
-            List<DocumentResponseDto> documents = documentService.searchSharedWithMe(searchValue);
-            return ResponseEntity.ok(documents);
-        } catch (ResponseStatusException e) {
-            throw e;
+            return ResponseEntity.status(HttpStatus.FOUND).body(documentService.searchSharedWithMe(searchValue));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error Searching documents");
         }
@@ -134,13 +131,11 @@ public class DocumentController {
         }
     }
 
-    /**
-     * Karim
-     */
+
     @GetMapping("/sharedwithme")
-    public ResponseEntity<?> shareWithMe() {
+    public ResponseEntity<?> sharedWithMe() {
         try {
-            return ResponseEntity.ok(documentService.sharedWithMe());
+            return ResponseEntity.status(HttpStatus.FOUND).body(documentService.sharedWithMe());
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Error retrieving Shared documents");
         }

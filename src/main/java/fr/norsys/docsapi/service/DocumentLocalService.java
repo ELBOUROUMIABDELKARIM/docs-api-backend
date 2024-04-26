@@ -55,9 +55,8 @@ public class DocumentLocalService implements IDocumentService {
 
 
     @Override
-    public String upload(MultipartFile file, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException {
+    public void upload(MultipartFile file, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException {
         User user = getAuthenticatedUser();
-
         Path uploadPath = Paths.get(documentStorageProperties.getUploadDir());
         String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
         createDirectories(uploadPath);
@@ -86,7 +85,6 @@ public class DocumentLocalService implements IDocumentService {
                 metaDataRepository.save(metaDataItem);
             });
 
-            return String.valueOf(document.getId());
         } catch (IOException e) {
             Files.delete(filePath);
             throw new IOException("Could not save document: " + originalFilename, e);
@@ -120,7 +118,8 @@ public class DocumentLocalService implements IDocumentService {
     public List<DocumentResponseDto> getList() {
         try {
             User user = getAuthenticatedUser();
-            List<Document> documents = documentRepository.findByUser(user);
+            List<Document> documents = documentRepository.findByUser(user)
+                    .orElseThrow(()-> new ResponseStatusException(HttpStatus.NOT_FOUND, "No documents found"));
             return documents.stream()
                     .map(this::convertToDto)
                     .collect(Collectors.toList());
@@ -154,29 +153,33 @@ public class DocumentLocalService implements IDocumentService {
 
     @Override
     public void share(ShareDto shareDto) {
-        Document document = get(UUID.fromString(shareDto.getDocumentId()));
-        List<Permission> requestedPermissions = parsePermissions(shareDto.getPermissions());
-        validatePermissions(requestedPermissions);
-        List<Permission> effectivePermissions = resolveEffectivePermissions(requestedPermissions);
+        try{
+            Document document = get(UUID.fromString(shareDto.getDocumentId()));
+            List<Permission> requestedPermissions = parsePermissions(shareDto.getPermissions());
+            validatePermissions(requestedPermissions);
+            List<Permission> effectivePermissions = resolveEffectivePermissions(requestedPermissions);
 
-        List<String> userIds = shareDto.getUsersIds().stream()
-                .filter(userId -> !userId.equals(document.getUser().getId().toString()))
-                .toList();
+            List<String> userIds = shareDto.getUsersIds().stream()
+                    .filter(userId -> !userId.equals(document.getUser().getId().toString()))
+                    .toList();
 
-        userIds.forEach(userId -> {
-            User user = userRepository.findById(UUID.fromString(userId))
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
+            userIds.forEach(userId -> {
+                User user = userRepository.findById(UUID.fromString(userId))
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
 
-            permissionEntryRepository.deleteByDocumentAndUser(document, user);
+                permissionEntryRepository.deleteByDocumentAndUser(document, user);
 
-            effectivePermissions.forEach(permission -> {
-                PermissionEntry permissionEntry = new PermissionEntry();
-                permissionEntry.setDocument(document);
-                permissionEntry.setUser(user);
-                permissionEntry.setPermission(permission);
-                permissionEntryRepository.save(permissionEntry);
+                effectivePermissions.forEach(permission -> {
+                    PermissionEntry permissionEntry = new PermissionEntry();
+                    permissionEntry.setDocument(document);
+                    permissionEntry.setUser(user);
+                    permissionEntry.setPermission(permission);
+                    permissionEntryRepository.save(permissionEntry);
+                });
             });
-        });
+        }catch (IllegalArgumentException e){
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
+        }
     }
 
     @Override
