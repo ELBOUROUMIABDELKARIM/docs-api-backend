@@ -1,6 +1,5 @@
 package fr.norsys.docsapi.service;
 
-import fr.norsys.docsapi.dto.MessageResponse;
 import fr.norsys.docsapi.dto.auth.JwtResponse;
 import fr.norsys.docsapi.dto.auth.LoginRequest;
 import fr.norsys.docsapi.dto.auth.SignupRequest;
@@ -8,20 +7,18 @@ import fr.norsys.docsapi.entity.User;
 import fr.norsys.docsapi.repository.UserRepository;
 import fr.norsys.docsapi.security.service.UserDetailsImpl;
 import fr.norsys.docsapi.utils.JwtUtils;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 
-/**
- * Karim
- */
 @Service
 public class AuthService {
 
@@ -39,22 +36,26 @@ public class AuthService {
     }
 
     public ResponseEntity<JwtResponse> login(LoginRequest loginRequest) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
+        try {
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(loginRequest.getUsername(), loginRequest.getPassword()));
 
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = jwtUtils.generateJwtToken(authentication);
-        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+            String jwt = jwtUtils.generateJwtToken(authentication);
+            UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
 
-        return ResponseEntity.ok(new JwtResponse(jwt, userDetails.getId()));
+            return ResponseEntity.ok(new JwtResponse(jwt, userDetails.getId()));
+        }catch (AuthenticationException e){
+            throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid Credentials");
+        }
     }
 
     public ResponseEntity<String> signup(SignupRequest signupRequest) {
         if (userRepository.existsByEmail(signupRequest.getEmail())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Email is already in use!");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Email is already in use!");
         }
         if (userRepository.existsByUserName(signupRequest.getUsername())) {
-            return ResponseEntity.status(HttpStatus.CONFLICT).body("Username is already taken!");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Username is already taken!");
         }
         User user = User.builder()
                 .userName(signupRequest.getUsername())
