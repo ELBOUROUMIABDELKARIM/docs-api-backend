@@ -2,8 +2,6 @@ package fr.norsys.docsapi.repository;
 
 import fr.norsys.docsapi.entity.Document;
 import fr.norsys.docsapi.entity.User;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.PagingAndSortingRepository;
@@ -16,7 +14,6 @@ public interface DocumentRepository extends JpaRepository<Document, UUID>, Pagin
     Optional<Document> findByChecksum(String checksum);
     Optional<Document> findByName(String filename);
     Optional<List<Document>> findByUser(User user);
-    Page<Document> findByUser(User user, Pageable pageable);
     @Query("SELECT d FROM Document d JOIN d.permissions p WHERE p.user = :user AND d.user <> :user")
     Optional<List<Document>> findSharedDocumentsForUser(User user);
 }

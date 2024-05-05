@@ -1,5 +1,8 @@
 package fr.norsys.docsapi.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import fr.norsys.docsapi.dto.document.DocumentResponseDto;
 import fr.norsys.docsapi.dto.document.ShareDto;
 import fr.norsys.docsapi.entity.*;
@@ -11,23 +14,22 @@ import fr.norsys.docsapi.security.service.UserDetailsImpl;
 import fr.norsys.docsapi.specifications.DocumentSpecifications;
 import fr.norsys.docsapi.utils.DocumentHashCalculator;
 import fr.norsys.docsapi.utils.DocumentStorageProperties;
+import fr.norsys.docsapi.utils.LocalFileStorage;
 import jakarta.persistence.criteria.Join;
 import jakarta.persistence.criteria.JoinType;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.UrlResource;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.domain.Specification;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.web.server.ResponseStatusException;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.file.*;
 import java.security.NoSuchAlgorithmException;
 import java.sql.Timestamp;
@@ -44,55 +46,43 @@ public class DocumentLocalService implements IDocumentService {
     private final UserRepository userRepository;
     private final MetaDataRepository metaDataRepository;
     private final PermissionEntryRepository permissionEntryRepository;
+    private final LocalFileStorage localFileStorage;
 
-    public DocumentLocalService(DocumentStorageProperties documentStorageProperties, DocumentRepository documentRepository, UserRepository userRepository, MetaDataRepository metaDataRepository, PermissionEntryRepository permissionEntryRepository) {
+    public DocumentLocalService(DocumentStorageProperties documentStorageProperties, DocumentRepository documentRepository, UserRepository userRepository, MetaDataRepository metaDataRepository, PermissionEntryRepository permissionEntryRepository, LocalFileStorage localFileStorage) {
         this.documentStorageProperties = documentStorageProperties;
         this.documentRepository = documentRepository;
         this.userRepository = userRepository;
         this.metaDataRepository = metaDataRepository;
         this.permissionEntryRepository = permissionEntryRepository;
+        this.localFileStorage = localFileStorage;
     }
 
-
     @Override
-    public void upload(MultipartFile file, List<MetaData> metadata) throws IOException, NoSuchAlgorithmException {
+    public ResponseEntity<String> upload(MultipartFile file, String metadata) {
+        List<MetaData> metadataMapped = mapMetadata(metadata);
         User user = getAuthenticatedUser();
-        Path uploadPath = Paths.get(documentStorageProperties.getUploadDir());
-        String originalFilename = StringUtils.cleanPath(Objects.requireNonNull(file.getOriginalFilename()));
-        createDirectories(uploadPath);
+        Path uploadPath = localFileStorage.getUploadPath();
+        String originalFilename = localFileStorage.getOriginalFilename(file);
+        localFileStorage.createUploadDirectories(uploadPath);
         Path filePath = uploadPath.resolve(originalFilename);
 
-        try (InputStream inputStream = file.getInputStream()) {
-            Files.copy(inputStream, filePath, StandardCopyOption.REPLACE_EXISTING);
-            String checksum = DocumentHashCalculator.calculateHash(filePath);
+        try {
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+            String checksum = DocumentHashCalculator.calculateChecksum(filePath);
             validateDocument(checksum, originalFilename);
-            String type = Files.probeContentType(filePath);
-            if (type == null) {
-                type = "unknown";
-            }
-            Document document = createDocument(originalFilename, file.getSize(), type,checksum, filePath.toString(), user);
-            documentRepository.save(document);
-
-            PermissionEntry permissionEntry = PermissionEntry.builder()
-                    .document(document)
-                    .user(user)
-                    .permission(Permission.ALL)
-                    .build();
-            permissionEntryRepository.save(permissionEntry);
-
-            metadata.forEach(metaDataItem -> {
-                metaDataItem.setDocument(document);
-                metaDataRepository.save(metaDataItem);
-            });
-
-        } catch (IOException e) {
-            Files.delete(filePath);
-            throw new IOException("Could not save document: " + originalFilename, e);
+            String type = localFileStorage.getContentType(filePath);
+            Document document = saveDocument(originalFilename, file.getSize(), type, checksum, filePath.toString(), user);
+            savePermissionEntry(document, user);
+            saveMetadata(metadataMapped, document);
+            return ResponseEntity.status(HttpStatus.CREATED).body("Document '" + originalFilename + "' uploaded successfully");
+        } catch (IOException | NoSuchAlgorithmException e) {
+            localFileStorage.handleUploadFailure(filePath, e);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Something went wrong");
         }
     }
 
     @Override
-    public Resource download(String docId) throws IOException {
+    public ResponseEntity<Resource> download(String docId) {
         Document document = get(UUID.fromString(docId));
         User user = getAuthenticatedUser();
 
@@ -106,53 +96,90 @@ public class DocumentLocalService implements IDocumentService {
         try {
             Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
             if (!Files.exists(foundFile)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found");
             }
-            return new UrlResource(foundFile.toUri());
-        } catch (InvalidPathException e) {
-            throw new IOException("Document not found");
+            Resource resource = new UrlResource(foundFile.toUri());
+            String contentType = MediaType.APPLICATION_OCTET_STREAM_VALUE;
+            String headerValue = "attachment; filename=\"" + resource.getFilename() + "\"";
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION, headerValue)
+                    .body(resource);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found");
         }
     }
 
     @Override
-    public List<DocumentResponseDto> getList() {
+    public Document get(UUID id) {
+        User authenticatedUser = getAuthenticatedUser();
+        Document document = documentRepository.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
+
+        if (!document.getUser().equals(authenticatedUser) &&
+                document.getPermissions().stream().noneMatch(permissionEntry -> permissionEntry.getUser().equals(authenticatedUser))) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to access this document");
+        }
+
+        return document;
+    }
+
+    @Override
+    public ResponseEntity<?> getList() {
         try {
             User user = getAuthenticatedUser();
             List<Document> documents = documentRepository.findByUser(user)
                     .orElseThrow(()-> new ResponseStatusException(HttpStatus.NOT_FOUND, "No documents found"));
-            return documents.stream()
+            var docs =  documents.stream()
                     .map(this::convertToDto)
                     .collect(Collectors.toList());
+            return ResponseEntity.status(HttpStatus.FOUND).body(docs);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Please try again later.", e);
         }
     }
 
     @Override
-    public Map<String, Object> getListPagination(int page, int size) {
+    public ResponseEntity<?> delete(String id) {
+        Document document = get(UUID.fromString(id));
+        User user = getAuthenticatedUser();
+
+        if (!document.getUser().equals(user)) {
+            boolean hasDeletePermission = hasPermission(document, user, Permission.DELETE);
+            if (!hasDeletePermission) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to delete this document");
+            }
+        }
+        try {
+            Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
+            if (!Files.exists(foundFile)) {
+                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
+            }
+            Files.delete(foundFile);
+            documentRepository.delete(document);
+            return ResponseEntity.status(HttpStatus.NO_CONTENT).build();
+        } catch (NoSuchFileException e) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found", e);
+        } catch (IOException e) {
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete document", e);
+        }
+    }
+
+    @Override
+    public ResponseEntity<List<DocumentResponseDto>> search(String searchValue) {
         try {
             User user = getAuthenticatedUser();
-
-            Pageable paging = PageRequest.of(page, size);
-            Page<Document> pageDocs = documentRepository.findByUser(user, paging);
-            List<DocumentResponseDto> documents = pageDocs.getContent().stream()
-                    .map(this::convertToDto)
-                    .toList();
-
-            Map<String, Object> response = new HashMap<>();
-            response.put("documents", documents);
-            response.put("currentPage", pageDocs.getNumber());
-            response.put("totalItems", pageDocs.getTotalElements());
-            response.put("totalPages", pageDocs.getTotalPages());
-            return response;
-
+            Specification<Document> specification = Specification.where(DocumentSpecifications.search(searchValue))
+                    .and((root, query, criteriaBuilder) ->
+                            criteriaBuilder.equal(root.get("user"), user));
+            return executeSearch(specification);
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Please try again later.", e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
         }
     }
 
     @Override
-    public void share(ShareDto shareDto) {
+    public ResponseEntity<?>  share(ShareDto shareDto) {
         try{
             Document document = get(UUID.fromString(shareDto.getDocumentId()));
             List<Permission> requestedPermissions = parsePermissions(shareDto.getPermissions());
@@ -177,22 +204,26 @@ public class DocumentLocalService implements IDocumentService {
                     permissionEntryRepository.save(permissionEntry);
                 });
             });
+
+            return ResponseEntity.status(HttpStatus.ACCEPTED).body("File Successfully Shared");
         }catch (IllegalArgumentException e){
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage());
         }
     }
 
     @Override
-    public List<DocumentResponseDto> sharedWithMe() {
+    public ResponseEntity<List<DocumentResponseDto>> sharedWithMe() {
         try {
             var authentication = SecurityContextHolder.getContext().getAuthentication();
             var userDetails = (UserDetailsImpl) authentication.getPrincipal();
             var user = userRepository.findByUserName(userDetails.getUsername()).orElseThrow();
             List<Document> documents = documentRepository.findSharedDocumentsForUser(user)
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "No Shared Documents found"));
-            return documents.stream()
+            var docs = documents.stream()
                     .map(this::convertToDto)
                     .collect(Collectors.toList());
+            return ResponseEntity.status(HttpStatus.FOUND).body(docs);
+
         }catch (Exception e){
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
         }
@@ -200,23 +231,7 @@ public class DocumentLocalService implements IDocumentService {
     }
 
     @Override
-    public List<DocumentResponseDto> search(String searchValue) {
-        try {
-            User user = getAuthenticatedUser();
-            Specification<Document> specification = Specification.where(DocumentSpecifications.search(searchValue))
-                    .and((root, query, criteriaBuilder) ->
-                            criteriaBuilder.equal(root.get("user"), user));
-            List<Document> documents = documentRepository.findAll(specification);
-            return documents.stream()
-                    .map(this::convertToDto)
-                    .collect(Collectors.toList());
-        } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
-        }
-    }
-
-    @Override
-    public List<DocumentResponseDto> searchSharedWithMe(String searchValue) {
+    public ResponseEntity<List<DocumentResponseDto>> searchSharedWithMe(String searchValue) {
         try {
             User user = getAuthenticatedUser();
 
@@ -232,58 +247,56 @@ public class DocumentLocalService implements IDocumentService {
                     .and(sharedWithMeSpec)
                     .and(notOwnedByUserSpec);
 
-            List<Document> documents = documentRepository.findAll(combinedSpec);
-
-            return documents.stream()
-                    .map(this::convertToDto)
-                    .collect(Collectors.toList());
+            return executeSearch(combinedSpec);
         } catch (Exception e) {
             throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Try Later Please");
         }
     }
 
-    @Override
-    public Document get(UUID id) {
-        User authenticatedUser = getAuthenticatedUser();
-        Document document = documentRepository.findById(id)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Document not found"));
-
-        if (!document.getUser().equals(authenticatedUser) &&
-                document.getPermissions().stream().noneMatch(permissionEntry -> permissionEntry.getUser().equals(authenticatedUser))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to access this document");
-        }
-
-        return document;
-    }
-
-    @Override
-    public void delete(String id) {
-        Document document = get(UUID.fromString(id));
-        User user = getAuthenticatedUser();
-
-        if (!document.getUser().equals(user)) {
-            boolean hasDeletePermission = hasPermission(document, user, Permission.DELETE);
-            if (!hasDeletePermission) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "User does not have permission to delete this document");
-            }
-        }
-        try {
-            Path foundFile = Paths.get(documentStorageProperties.getUploadDir(), document.getName());
-            if (!Files.exists(foundFile)) {
-                throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found");
-            }
-            Files.delete(foundFile);
-            documentRepository.delete(document);
-        } catch (NoSuchFileException e) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "File not found", e);
-        } catch (IOException e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Failed to delete document", e);
-        }
-    }
-
     // Helpers
 
-    private void validatePermissions(List<Permission> permissions) {
+    public List<MetaData> mapMetadata(String metadata) {
+        try {
+            return new ObjectMapper().readValue(metadata, new TypeReference<>() {});
+        } catch (JsonProcessingException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid metadata format");
+        }
+    }
+
+    public ResponseEntity<List<DocumentResponseDto>> executeSearch(Specification<Document> specification) {
+        List<Document> documents = documentRepository.findAll(specification);
+        if (documents.isEmpty()) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No documents found");
+        }
+        var docs = documents.stream()
+                .map(this::convertToDto)
+                .collect(Collectors.toList());
+
+        return ResponseEntity.status(HttpStatus.FOUND).body(docs);
+    }
+
+    public Document saveDocument(String originalFilename, long size, String type, String checksum, String filePath, User user) {
+        Document document = createDocument(originalFilename, size, type, checksum, filePath, user);
+        return documentRepository.save(document);
+    }
+
+    public void savePermissionEntry(Document document, User user) {
+        PermissionEntry permissionEntry = PermissionEntry.builder()
+                .document(document)
+                .user(user)
+                .permission(Permission.ALL)
+                .build();
+        permissionEntryRepository.save(permissionEntry);
+    }
+
+    public void saveMetadata(List<MetaData> metadataMapped, Document document) {
+        metadataMapped.forEach(metaDataItem -> {
+            metaDataItem.setDocument(document);
+            metaDataRepository.save(metaDataItem);
+        });
+    }
+
+    public void validatePermissions(List<Permission> permissions) {
         for (Permission permission : permissions) {
             if (!Arrays.asList(Permission.values()).contains(permission)) {
                 throw new IllegalArgumentException("Invalid permission: " + permission);
@@ -291,7 +304,7 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    private List<Permission> resolveEffectivePermissions(List<Permission> requestedPermissions) {
+    public List<Permission> resolveEffectivePermissions(List<Permission> requestedPermissions) {
         if (requestedPermissions.contains(Permission.ALL) ||
                 new HashSet<>(requestedPermissions).containsAll(Arrays.asList(Permission.READ, Permission.WRITE, Permission.DELETE))) {
             return Collections.singletonList(Permission.ALL);
@@ -306,20 +319,20 @@ public class DocumentLocalService implements IDocumentService {
         }
     }
 
-    private List<Permission> parsePermissions(String permissionsString) {
+    public List<Permission> parsePermissions(String permissionsString) {
         return Arrays.stream(permissionsString.split(","))
                 .map(Permission::valueOf)
                 .collect(Collectors.toList());
     }
 
-    private User getAuthenticatedUser(){
+    public User getAuthenticatedUser(){
         var authentication = SecurityContextHolder.getContext().getAuthentication();
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
         return userRepository.findByUserName(userDetails.getUsername())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));
     }
 
-    private static Document createDocument(String name, long size, String type, String checksum, String storageLocation, User user) {
+    public static Document createDocument(String name, long size, String type, String checksum, String storageLocation, User user) {
         Timestamp now = Timestamp.from(Instant.now());
         return Document.builder()
                 .name(name)
@@ -333,19 +346,13 @@ public class DocumentLocalService implements IDocumentService {
                 .build();
     }
 
-    private void createDirectories(Path path) throws IOException {
-        if (!Files.exists(path)) {
-            Files.createDirectories(path);
-        }
-    }
-
-    private void validateDocument(String checksum, String filename) {
+    public void validateDocument(String checksum, String filename) {
         if (documentRepository.findByChecksum(checksum).isPresent() || documentRepository.findByName(filename).isPresent()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Document already exists");
         }
     }
 
-    private DocumentResponseDto convertToDto(Document document) {
+    public DocumentResponseDto convertToDto(Document document) {
         return DocumentResponseDto.builder()
                 .id(document.getId())
                 .name(document.getName())
@@ -359,9 +366,10 @@ public class DocumentLocalService implements IDocumentService {
                 .build();
     }
 
-    private boolean hasPermission(Document document, User user, Permission requiredPermission) {
+    public boolean hasPermission(Document document, User user, Permission requiredPermission) {
         return document.getPermissions().stream()
                 .filter(permissionEntry -> permissionEntry.getUser().equals(user))
                 .anyMatch(permissionEntry -> permissionEntry.getPermission().equals(requiredPermission) || permissionEntry.getPermission().equals(Permission.ALL));
     }
+
 }

@@ -34,18 +34,18 @@ public class AuthServiceTest extends MyContainer {
 
 
     @BeforeEach
-    public void setUp() {
+    public void set_up() {
         userRepository.deleteAll();
     }
 
     @AfterEach
-    public void tearDown() {
+    public void tear_down() {
         userRepository.deleteAll();
     }
 
     @Test
     @DisplayName("Should successfully signup")
-    public void testSignupSuccessful() {
+    public void test_signup_successful() {
         SignupRequest signupRequest = new SignupRequest("user1", "user1@example.com", "password123");
 
         ResponseEntity<String> response = authService.signup(signupRequest);
@@ -61,7 +61,7 @@ public class AuthServiceTest extends MyContainer {
 
     @Test
     @DisplayName("Should handle duplicate username during signup")
-    public void testSignupDuplicateUsername() {
+    public void test_signup_duplicate_username() {
         SignupRequest signupRequest = new SignupRequest("user1", "user1@example.com", "password123");
         authService.signup(signupRequest);
 
@@ -74,7 +74,7 @@ public class AuthServiceTest extends MyContainer {
 
     @Test
     @DisplayName("Should handle duplicate email during signup")
-    public void testSignupDuplicateEmail() {
+    public void test_signup_duplicate_email() {
         SignupRequest signupRequest = new SignupRequest("user1", "user1@example.com", "password123");
         authService.signup(signupRequest);
 
@@ -87,7 +87,7 @@ public class AuthServiceTest extends MyContainer {
 
     @Test
     @DisplayName("Should successfully login")
-    public void testLoginSuccessful() {
+    public void test_login_successful() {
         SignupRequest signupRequest = new SignupRequest("user1", "user1@example.com", "password123");
         authService.signup(signupRequest);
 
@@ -100,7 +100,7 @@ public class AuthServiceTest extends MyContainer {
 
     @Test
     @DisplayName("Should handle invalid login credentials")
-    public void testLoginInvalidCredentials() {
+    public void test_login_invalid_credentials() {
         SignupRequest signupRequest = new SignupRequest("user1", "user1@example.com", "password123");
         authService.signup(signupRequest);
 

@@ -9,6 +9,11 @@ import java.security.NoSuchAlgorithmException;
 
 
 public class DocumentHashCalculator {
+
+    public static String calculateChecksum(Path filePath) throws NoSuchAlgorithmException, IOException {
+        return calculateHash(filePath);
+    }
+
     public static String calculateHash(Path file) throws NoSuchAlgorithmException, IOException {
         byte[] buffer = new byte[8192]; // 8KB buffer size
         int count;
